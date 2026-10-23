@@ -5,6 +5,27 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { LogLevel, TimeStampedLogger } from './logging';
 
+// Normalize a file system path, so that paths from settings and from document URIs can be compared
+function normalizePath(givenPath: string): string {
+	if (!givenPath) {
+		return givenPath;
+	}
+	const normalized = path.normalize(givenPath);
+	// VS Code uses lower case drive letters on Windows, e.g. c:\..., while users may write C:\...
+	if (process.platform === 'win32' && /^[a-zA-Z]:/.test(normalized)) {
+		return normalized.charAt(0).toLowerCase() + normalized.slice(1);
+	}
+	return normalized;
+}
+
+// Replace ${workspaceFolder} in given configuration path and normalize it
+function resolveConfPath(confPath: string | undefined, workspaceFolderPath: string): string | undefined {
+	if (!confPath) {
+		return confPath;
+	}
+	return normalizePath(confPath.replace('${workspaceFolder}', workspaceFolderPath));
+}
+
 interface Needs {
 	[need_id: string]: Need;
 }
@@ -139,15 +160,17 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		const watcher = vscode.workspace.createFileSystemWatcher('**/*.json');
 		// Watch for file content change
 		watcher.onDidChange((uri) => {
-			if (all_curr_needs_jsons.indexOf(uri.fsPath) >= 0) {
-				this.needsInfos[uri.fsPath] = this.loadNeedsJsonToInfo(uri.fsPath);
+			const changed_path = normalizePath(uri.fsPath);
+			if (all_curr_needs_jsons.indexOf(changed_path) >= 0) {
+				this.needsInfos[changed_path] = this.loadNeedsJsonToInfo(changed_path);
 				this._onDidChangeTreeData.fire(undefined);
 			}
 		});
 		// Watch for file create
 		watcher.onDidCreate((uri) => {
-			if (all_curr_needs_jsons.indexOf(uri.fsPath) >= 0) {
-				this.needsInfos[uri.fsPath] = this.loadNeedsJsonToInfo(uri.fsPath);
+			const created_path = normalizePath(uri.fsPath);
+			if (all_curr_needs_jsons.indexOf(created_path) >= 0) {
+				this.needsInfos[created_path] = this.loadNeedsJsonToInfo(created_path);
 				this._onDidChangeTreeData.fire(undefined);
 			}
 		});
@@ -155,7 +178,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 
 	private onActiveEditorChanged(): void {
 		if (vscode.window.activeTextEditor) {
-			const curr_doc = vscode.window.activeTextEditor.document.uri.fsPath;
+			const curr_doc = normalizePath(vscode.window.activeTextEditor.document.uri.fsPath);
 			// Check if current active editor relevant
 			let found_need_info = false;
 			let found_need_info_key = '';
@@ -320,12 +343,12 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 				: undefined;
 		const conf_folders: DocConf[] = [];
 		if (workspaceFolderpath) {
-			needs_json_path = needs_json_path?.replace('${workspaceFolder}', workspaceFolderpath);
-			confPyDir = confPyDir?.replace('${workspaceFolder}', workspaceFolderpath);
+			needs_json_path = resolveConfPath(needs_json_path, workspaceFolderpath);
+			confPyDir = resolveConfPath(confPyDir, workspaceFolderpath);
 			wk_folders?.forEach((folder) => {
 				conf_folders.push({
-					needsJson: folder.needsJson.replace('${workspaceFolder}', workspaceFolderpath),
-					srcDir: folder.srcDir.replace('${workspaceFolder}', workspaceFolderpath)
+					needsJson: resolveConfPath(folder.needsJson, workspaceFolderpath) || '',
+					srcDir: resolveConfPath(folder.srcDir, workspaceFolderpath) || ''
 				});
 			});
 		} else {
@@ -447,11 +470,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 			let need_doc_path: string;
 			const needs_per_doc: NeedsPerDoc = {};
 			Object.values(needs_objects).forEach((nd) => {
-				if (curr_src_dir.endsWith('/')) {
-					need_doc_path = curr_src_dir + nd.docname + nd.doctype;
-				} else {
-					need_doc_path = curr_src_dir + '/' + nd.docname + nd.doctype;
-				}
+				need_doc_path = normalizePath(path.join(curr_src_dir, nd.docname + nd.doctype));
 
 				if (all_files_path.indexOf(need_doc_path) === -1) {
 					all_files_path.push(need_doc_path);

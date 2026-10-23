@@ -189,7 +189,7 @@ suite('Sphinx-Needs Extension Tests for rst file', function () {
 			[
 				'goto different file',
 				new vscode.Position(36, 1),
-				path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst'),
+				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst')).path,
 				new vscode.Position(3, 0)
 			],
 			['goto multiple ID same line', new vscode.Position(36, 10), docUri.path, new vscode.Position(20, 0)],
@@ -202,26 +202,26 @@ suite('Sphinx-Needs Extension Tests for rst file', function () {
 			[
 				'goto option with multiple ID last',
 				new vscode.Position(14, 19),
-				path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst'),
+				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst')).path,
 				new vscode.Position(3, 0)
 			],
 			[
 				'goto option with multiple ID first',
 				new vscode.Position(14, 11),
-				path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst'),
+				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst')).path,
 				new vscode.Position(9, 0)
 			],
 			['negative goto', new vscode.Position(6, 3), '', new vscode.Position(0, 0)],
 			[
 				'goto definition for nested child need',
 				new vscode.Position(36, 18),
-				path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst'),
+				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst')).path,
 				new vscode.Position(23, 0)
 			],
 			[
 				'goto definition for nested grand child need',
 				new vscode.Position(36, 26),
-				path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst'),
+				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst')).path,
 				new vscode.Position(41, 0)
 			],
 		];

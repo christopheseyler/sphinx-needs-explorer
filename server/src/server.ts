@@ -1,6 +1,8 @@
 'use strict';
 
 import fs = require('fs');
+import path = require('path');
+import { fileURLToPath, pathToFileURL } from 'url';
 
 import {
 	createConnection,
@@ -103,6 +105,41 @@ interface WsConfigs {
 	srcDir: string;
 	folders: DocConf[];
 	loggingLevel: LogLevel;
+}
+
+// Normalize a file system path, so that paths from settings and from document URIs can be compared
+function normalize_path(given_path: string): string {
+	if (!given_path) {
+		return given_path;
+	}
+	const normalized = path.normalize(given_path);
+	// VS Code uses lower case drive letters on Windows, e.g. c:\..., while users may write C:\...
+	if (process.platform === 'win32' && /^[a-zA-Z]:/.test(normalized)) {
+		return normalized.charAt(0).toLowerCase() + normalized.slice(1);
+	}
+	return normalized;
+}
+
+// Convert a file URI, e.g. file:///c%3A/path/to/doc.rst, to a normalized file system path
+function uri_to_path(uri: string): string {
+	try {
+		return normalize_path(fileURLToPath(uri));
+	} catch (err) {
+		return '';
+	}
+}
+
+// Convert a file system path to a file URI
+function path_to_uri(given_path: string): DocumentUri {
+	return pathToFileURL(given_path).href;
+}
+
+// Replace ${workspaceFolder} in given configuration path and normalize it
+function resolve_conf_path(conf_path: string, wk_folder_path: string): string {
+	if (!conf_path) {
+		return '';
+	}
+	return normalize_path(conf_path.replace('${workspaceFolder}', wk_folder_path));
 }
 
 connection.onInitialize((params: InitializeParams) => {
@@ -237,18 +274,18 @@ function check_wk_confs(configs: WsConfigs) {
 
 // Get workspace settings
 async function get_wk_conf_settings() {
-	const cal_wk_folder_uri: string = workspace_folder_uri.replace('file://', '');
+	const cal_wk_folder_path: string = workspace_folder_uri ? uri_to_path(workspace_folder_uri) : '';
 
 	// Get configuration of sphinx-needs.needsJson
 	let needs_json_path = '';
 	await connection.workspace.getConfiguration('sphinx-needs.needsJson').then((value) => {
-		needs_json_path = value.replace('${workspaceFolder}', cal_wk_folder_uri);
+		needs_json_path = resolve_conf_path(value, cal_wk_folder_path);
 	});
 
 	// Get configuration of sphinx-needs.srcDir
 	let doc_src_dir = '';
 	await connection.workspace.getConfiguration('sphinx-needs.srcDir').then((value) => {
-		doc_src_dir = value.replace('${workspaceFolder}', cal_wk_folder_uri);
+		doc_src_dir = resolve_conf_path(value, cal_wk_folder_path);
 	});
 
 	// Get configuration of sphinx-needs.loggingLevel
@@ -262,8 +299,8 @@ async function get_wk_conf_settings() {
 	await connection.workspace.getConfiguration('sphinx-needs.folders').then((value) => {
 		value.forEach((conf: DocConf) => {
 			wk_folders.push({
-				needsJson: conf.needsJson.replace('${workspaceFolder}', cal_wk_folder_uri),
-				srcDir: conf.srcDir.replace('${workspaceFolder}', cal_wk_folder_uri)
+				needsJson: resolve_conf_path(conf.needsJson, cal_wk_folder_path),
+				srcDir: resolve_conf_path(conf.srcDir, cal_wk_folder_path)
 			});
 		});
 	});
@@ -324,15 +361,15 @@ connection.onDidChangeWatchedFiles((_change) => {
 	let needs_json_file_changes: FileEvent | undefined;
 	const changed_files = _change.changes;
 	changed_files.forEach((changed_file) => {
-		const changed_file_uri = changed_file.uri.replace('file://', '');
-		if (Object.keys(needs_infos).indexOf(changed_file_uri) >= 0) {
+		const changed_file_path = uri_to_path(changed_file.uri);
+		if (Object.keys(needs_infos).indexOf(changed_file_path) >= 0) {
 			needs_json_file_changes = changed_file;
 		}
 	});
 
 	// Needs Json file changed
 	if (needs_json_file_changes) {
-		const changed_needs_json = needs_json_file_changes.uri.replace('file://', '');
+		const changed_needs_json = uri_to_path(needs_json_file_changes.uri);
 		// Check file change type
 		if (needs_json_file_changes.type === 1) {
 			// Usecase: configuration of NeedsJson file not in sync with needs json file name, user changed file name to sync
@@ -432,8 +469,8 @@ function load_needs_info_from_json(given_needs_json_path: string): NeedsTypesDoc
 			}
 		});
 	}
-	if (!curr_src_dir.endsWith('/')) {
-		curr_src_dir = curr_src_dir + '/';
+	if (curr_src_dir && !curr_src_dir.endsWith(path.sep)) {
+		curr_src_dir = curr_src_dir + path.sep;
 	}
 
 	// Initialize needs_types_docs_info
@@ -491,7 +528,7 @@ function load_needs_info_from_json(given_needs_json_path: string): NeedsTypesDoc
 
 	// Calulcate all files full paths in current srcDir
 	Object.keys(needs_types_docs_info.needs_per_doc).forEach((fp) => {
-		needs_types_docs_info.all_files_abs_paths.push(curr_src_dir + fp);
+		needs_types_docs_info.all_files_abs_paths.push(normalize_path(path.join(curr_src_dir, fp)));
 	});
 
 	return needs_types_docs_info;
@@ -798,10 +835,10 @@ function get_curr_needs_info(params: TextDocumentPositionParams): NeedsTypesDocs
 		return needs_infos[wsConfigs.needsJson];
 	} else {
 		// Get current document file path
-		const curr_doc_uri = params.textDocument.uri.replace('file://', '');
+		const curr_doc_path = uri_to_path(params.textDocument.uri);
 		// Check and determine which needsJson infos to use
 		for (const [need_json, need_info] of Object.entries(needs_infos)) {
-			if (need_info?.all_files_abs_paths && need_info.all_files_abs_paths.indexOf(curr_doc_uri) >= 0) {
+			if (need_info?.all_files_abs_paths && need_info.all_files_abs_paths.indexOf(curr_doc_path) >= 0) {
 				return needs_infos[need_json];
 			}
 		}
@@ -862,7 +899,7 @@ connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Def
 
 	// Get the doc path of the need
 	const curr_need: Need = curr_needs_info.needs[need_id];
-	const doc_path = curr_needs_info.src_dir + curr_need.docname + curr_need.doctype;
+	const doc_path = path.join(curr_needs_info.src_dir, curr_need.docname + curr_need.doctype);
 	// Read the document contents
 	const doc_contents = read_doc_content(doc_path);
 	if (!doc_contents) {
@@ -875,7 +912,7 @@ connection.onDefinition((_textDocumentPosition: TextDocumentPositionParams): Def
 	}
 
 	return {
-		uri: doc_path,
+		uri: path_to_uri(doc_path),
 		range: {
 			start: { line: need_directive_location, character: 0 },
 			end: { line: need_directive_location, character: 0 }
@@ -914,7 +951,7 @@ connection.onReferences((_textDocumentPosition: TextDocumentPositionParams): Loc
 		curr_need.bkLinks.forEach((link_id) => {
 			if (curr_needs_info) {
 				const link_need: Need = curr_needs_info.needs[link_id];
-				const doc_path = curr_needs_info.src_dir + link_need.docname + link_need.doctype;
+				const doc_path = path.join(curr_needs_info.src_dir, link_need.docname + link_need.doctype);
 				// Read the document contents
 				const doc_contents = read_doc_content(doc_path);
 				if (!doc_contents) {
@@ -943,7 +980,7 @@ connection.onReferences((_textDocumentPosition: TextDocumentPositionParams): Loc
 
 				// Get Location of linked need ID inside this directive definition
 				const location: Location = {
-					uri: doc_path,
+					uri: path_to_uri(doc_path),
 					range: {
 						start: { line: found_link_id_line_idx, character: startPosID },
 						end: { line: found_link_id_line_idx, character: endPosID }
