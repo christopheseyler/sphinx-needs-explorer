@@ -68,6 +68,7 @@ interface Needs {
 
 interface Need {
 	description: string;
+	content?: string;
 	docname: string;
 	doctype: string;
 	title: string;
@@ -441,6 +442,11 @@ function load_needs_info_from_json(given_needs_json_path: string): NeedsTypesDoc
 
 	// Check and calculate doctype for nested needs
 	for (const need of Object.values(needs)) {
+		// Newer Sphinx-Needs versions export the need content as 'content' instead of 'description'
+		if (need.description === undefined) {
+			need.description = need.content ?? '';
+		}
+
 		let temp_parent_id: string;
 		let temp_parent: Need;
 		// Get child need

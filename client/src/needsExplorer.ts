@@ -33,6 +33,7 @@ interface Needs {
 interface Need {
 	id: string;
 	description: string;
+	content?: string;
 	docname: string;
 	doctype: string;
 	status: string;
@@ -434,6 +435,11 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 
 			// Check and get doctype for nested child needs
 			for (const need of Object.values(needs_objects)) {
+				// Newer Sphinx-Needs versions export the need content as 'content' instead of 'description'
+				if (need.description === undefined) {
+					need.description = need.content ?? '';
+				}
+
 				let temp_parent_id: string;
 				let temp_parent: Need;
 				// Get child need
