@@ -118,12 +118,12 @@
       "view/item/context": [
         {
           "command": "sphinxNeedsExplorer.gotoDef",
-          "when": "view == sphinxNeedsExplorer && viewItem == needID",
+          "when": "view =~ /^sphinxNeeds(Explorer|Current)$/ && viewItem == needID",
           "group": "inline"
         },
         {
           "command": "sphinxNeedsExplorer.copyID",
-          "when": "view == sphinxNeedsExplorer && viewItem == needID",
+          "when": "view =~ /^sphinxNeeds(Explorer|Current)$/ && viewItem == needID",
           "group": "inline"
         }
       ]
