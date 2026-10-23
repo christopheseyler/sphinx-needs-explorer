@@ -49,3 +49,7 @@ REQ_2, SPEC_1, REQ_10, REQ_25
 
    mySubFolder/sub.rst
    test.txt
+
+REQ_30
+
+.. include:: mySubFolder/included.inc

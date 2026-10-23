@@ -529,6 +529,10 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 			curr_need_file_path = path.resolve(this.needsInfo.src_dir, curr_need.docname + curr_need.doctype);
 			if (!this.pathExists(curr_need_file_path)) {
 				tslogger.warn(`SNV Explorer -> doc path for Need ${need.id} not exists: ${curr_need_file_path}`);
+			} else {
+				// Need may be defined in a file included by its docname file
+				curr_need_file_path =
+					findNeedSourceFile(curr_need_file_path, curr_need.id, this.needsInfo.src_dir) ?? curr_need_file_path;
 			}
 		}
 		const needFileUri: vscode.Uri = vscode.Uri.file(curr_need_file_path);
@@ -644,12 +648,62 @@ function findDefinition(need: Need, fileUri: vscode.Uri): vscode.Range | undefin
 		return;
 	}
 
-	const startIdxID = doc_contents[need_directive_location + 1].indexOf(need['id']);
+	const id_line_idx = doc_contents.findIndex((line) => isNeedIdLine(line, need['id']));
+	const startIdxID = doc_contents[id_line_idx].indexOf(need['id']);
 	const endIdxID = startIdxID + need['id'].length;
-	const startPos = new vscode.Position(need_directive_location + 1, startIdxID);
-	const endPos = new vscode.Position(need_directive_location + 1, endIdxID);
+	const startPos = new vscode.Position(id_line_idx, startIdxID);
+	const endPos = new vscode.Position(id_line_idx, endIdxID);
 
 	return new vscode.Range(startPos, endPos);
+}
+
+// Check if given line defines given need ID, e.g. '   :id: REQ_1' (but not REQ_10)
+function isNeedIdLine(line: string, needId: string): boolean {
+	const escapedId = needId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+	return new RegExp(`^\\s*:id:\\s+${escapedId}\\s*$`).test(line);
+}
+
+// Find the file where given need is actually defined.
+// needs.json only gives the docname of the including document, so follow '.. include::' directives.
+function findNeedSourceFile(
+	docPath: string,
+	needId: string,
+	srcDir: string,
+	visited: Set<string> = new Set()
+): string | undefined {
+	const normalizedDocPath = normalizePath(docPath);
+	if (visited.has(normalizedDocPath)) {
+		return undefined;
+	}
+	visited.add(normalizedDocPath);
+
+	let docContents: string[];
+	try {
+		docContents = fs.readFileSync(docPath, 'utf8').split('\n');
+	} catch (err) {
+		return undefined;
+	}
+	if (docContents.some((line) => isNeedIdLine(line, needId))) {
+		return docPath;
+	}
+
+	for (const line of docContents) {
+		const includeMatch = line.match(/^\s*\.\.\s+include::\s*(.+?)\s*$/);
+		// Skip standard docutils includes, e.g. <isonum.txt>
+		if (!includeMatch || includeMatch[1].startsWith('<')) {
+			continue;
+		}
+		const includePath = includeMatch[1];
+		// Absolute include paths are relative to the Sphinx source directory
+		const includedDocPath = includePath.startsWith('/')
+			? path.join(srcDir, includePath)
+			: path.resolve(path.dirname(docPath), includePath);
+		const found = findNeedSourceFile(includedDocPath, needId, srcDir, visited);
+		if (found) {
+			return found;
+		}
+	}
+	return undefined;
 }
 
 function read_need_doc_contents(fileUri: vscode.Uri): string[] | null {
@@ -665,34 +719,23 @@ function read_need_doc_contents(fileUri: vscode.Uri): string[] | null {
 
 function find_directive_definition(doc_content_lines: string[], curr_need: Need): number | null {
 	// Get line of need id definition with pattern {:id: need_id}
-	const id_pattern = `:id: ${curr_need.id}`;
-	// Check if id_pattern exists in target document
-	if (
-		doc_content_lines.every((line) => {
-			line.indexOf(id_pattern) !== -1;
-		})
-	) {
+	const found_id_line_idx = doc_content_lines.findIndex((line) => isNeedIdLine(line, curr_need.id));
+	if (found_id_line_idx === -1) {
 		tslogger.error(`SNV Explorer -> No defintion found of ${curr_need.id}.`);
 		return null;
 	}
-	const found_id_line_idx = doc_content_lines.findIndex((line) => line.indexOf(id_pattern) !== -1);
 
 	// Get line of directive with pattern {.. {need_type}::}
 	const directive_pattern = `.. ${curr_need.type}::`;
 	// Get lines before id_line_idx to find the line of directive
 	const new_doc_content_lines = doc_content_lines.slice(0, found_id_line_idx);
-	// Check if direcrive_pattern exists in target document
-	if (
-		new_doc_content_lines.every((line) => {
-			line.indexOf(directive_pattern) !== -1;
-		})
-	) {
-		tslogger.error(`SNV Explorer -> No defintion found of ${curr_need.id}.`);
-		return null;
-	}
 	const found_reverse_directive_line_idx = new_doc_content_lines
 		.reverse()
 		.findIndex((line) => line.indexOf(directive_pattern) !== -1);
+	if (found_reverse_directive_line_idx === -1) {
+		tslogger.error(`SNV Explorer -> No defintion found of ${curr_need.id}.`);
+		return null;
+	}
 	const found_directive_line_idx = new_doc_content_lines.length - 1 - found_reverse_directive_line_idx;
 	return found_directive_line_idx;
 }

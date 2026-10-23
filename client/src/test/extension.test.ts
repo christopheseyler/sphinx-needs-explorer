@@ -64,7 +64,8 @@ suite('Sphinx-Needs Extension Tests for rst file', function () {
 		// ->req>index.rst>
 		const expectedNeedPathLev3: vscode.CompletionList = {
 			items: [
-				{ label: 'REQ_1', insertText: 'REQ_1', detail: 'First requirement of doc1', documentation: 'Requirement content of REQ_1.' }
+				{ label: 'REQ_1', insertText: 'REQ_1', detail: 'First requirement of doc1', documentation: 'Requirement content of REQ_1.' },
+				{ label: 'REQ_30', insertText: 'REQ_30', detail: 'Requirement of doc1 defined in an included file', documentation: 'Requirement content of REQ_30.' }
 			]
 		};
 
@@ -128,13 +129,17 @@ suite('Sphinx-Needs Extension Tests for rst file', function () {
 					assert.equal(actualItem.kind, expectedItem.kind);
 				});
 			} else if (name === 'trigger > at lev3') {
-				assert.ok(actualCompletionList.items.length === 1, `Completion over ${name} failed.`);
-				const actualItem = actualCompletionList.items[0];
-				const expectedItem = expectedItems.items[0];
-				assert.equal(actualItem.label, expectedItem.label);
-				assert.equal(actualItem.detail, expectedItem.detail);
-				assert.equal(actualItem.insertText, expectedItem.insertText);
-				assert.equal(actualItem.documentation, expectedItem.documentation);
+				assert.ok(
+					actualCompletionList.items.length === expectedItems.items.length,
+					`Completion over ${name} failed.`
+				);
+				expectedItems.items.forEach((expectedItem, i) => {
+					const actualItem = actualCompletionList.items[i];
+					assert.equal(actualItem.label, expectedItem.label);
+					assert.equal(actualItem.detail, expectedItem.detail);
+					assert.equal(actualItem.insertText, expectedItem.insertText);
+					assert.equal(actualItem.documentation, expectedItem.documentation);
+				});
 			} else if (name === 'trigger /') {
 				assert.ok(actualCompletionList.items.length === 1, `Completion over ${name} failed.`);
 				const actualItem = actualCompletionList.items[0];
@@ -223,6 +228,12 @@ suite('Sphinx-Needs Extension Tests for rst file', function () {
 				new vscode.Position(36, 26),
 				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'sub.rst')).path,
 				new vscode.Position(41, 0)
+			],
+			[
+				'goto definition for need in included file',
+				new vscode.Position(52, 2),
+				vscode.Uri.file(path.resolve(__dirname, '../../testData/doc1/mySubFolder', 'included.inc')).path,
+				new vscode.Position(3, 0)
 			],
 		];
 
