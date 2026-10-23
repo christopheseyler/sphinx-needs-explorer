@@ -40,6 +40,7 @@ interface Need {
 	title: string;
 	type: string;
 	parent_need: string;
+	tags?: string[];
 }
 
 interface SNVConfig {
@@ -93,6 +94,13 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 	needsInfos: NeedsInfos = {};
 	isMultiDocs = false;
 	currEditorView = false;
+
+	// Filters of shown needs: needs of current document or all needs, need types and tags
+	filterScope: 'document' | 'all' = 'document';
+	filterTypes: string[] = [];
+	filterTags: string[] = [];
+	private treeView: vscode.TreeView<vscode.TreeItem> | undefined;
+	private filterContextKey = '';
 
 	constructor(currEditorView: boolean) {
 		// Get workspace configurations and init snvConfigs
@@ -194,6 +202,147 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		this.needsInfos = this.loadAllNeedsJsonsToInfos();
 		this.onActiveEditorChanged();
 		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	setTreeView(treeView: vscode.TreeView<vscode.TreeItem>, filterContextKey: string): void {
+		// Tree view and context key used to show active filters
+		this.treeView = treeView;
+		this.filterContextKey = filterContextKey;
+		this.updateFilterState();
+	}
+
+	async showFilterMenu(): Promise<void> {
+		// Offer types and tags of all needs of the needs.json
+		const baseNeeds = this.getFilterBaseNeeds();
+		const needs = this.needsInfo.all_needs ?? baseNeeds;
+		const scopeItem: vscode.QuickPickItem = {
+			label:
+				this.filterScope === 'document'
+					? '$(list-flat) Show all needs of needs.json'
+					: '$(file) Show needs of current document',
+			description: `currently: ${this.filterScope === 'document' ? 'current document' : 'all needs'}`
+		};
+		const typesItem: vscode.QuickPickItem = {
+			label: '$(symbol-class) Filter by type...',
+			description: this.filterTypes.length > 0 ? this.filterTypes.join(', ') : 'all types'
+		};
+		const tagsItem: vscode.QuickPickItem = {
+			label: '$(tag) Filter by tags...',
+			description: this.filterTags.length > 0 ? this.filterTags.join(', ') : 'no tag filter'
+		};
+		const clearItem: vscode.QuickPickItem = { label: '$(clear-all) Clear all filters' };
+
+		const picked = await vscode.window.showQuickPick([scopeItem, typesItem, tagsItem, clearItem], {
+			title: 'Sphinx-Needs: Filter needs'
+		});
+		if (picked === scopeItem) {
+			this.filterScope = this.filterScope === 'document' ? 'all' : 'document';
+		} else if (picked === typesItem) {
+			const types = await this.pickValues(
+				'Sphinx-Needs: Filter by type',
+				Object.values(needs).map((need) => [need.type]),
+				this.filterTypes
+			);
+			if (!types) {
+				return;
+			}
+			this.filterTypes = types;
+		} else if (picked === tagsItem) {
+			const tags = await this.pickValues(
+				'Sphinx-Needs: Filter by tags (needs must have all selected tags)',
+				Object.values(needs).map((need) => need.tags ?? []),
+				this.filterTags
+			);
+			if (!tags) {
+				return;
+			}
+			this.filterTags = tags;
+		} else if (picked === clearItem) {
+			this.filterScope = 'document';
+			this.filterTypes = [];
+			this.filterTags = [];
+		} else {
+			return;
+		}
+		this.onActiveEditorChanged();
+		this.updateFilterState();
+		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	private async pickValues(
+		title: string,
+		valuesPerNeed: string[][],
+		selected: string[]
+	): Promise<string[] | undefined> {
+		// Multi selection of values with number of needs for each value
+		const counts = new Map<string, number>();
+		valuesPerNeed.forEach((values) => {
+			values.forEach((value) => counts.set(value, (counts.get(value) ?? 0) + 1));
+		});
+		// Keep selected values even if not used by current needs anymore
+		selected.forEach((value) => counts.set(value, counts.get(value) ?? 0));
+		const items: vscode.QuickPickItem[] = Array.from(counts.keys())
+			.sort()
+			.map((value) => ({
+				label: value,
+				description: `${counts.get(value)} needs`,
+				picked: selected.includes(value)
+			}));
+		const picked = await vscode.window.showQuickPick(items, {
+			title: title,
+			canPickMany: true,
+			placeHolder: 'Select values, none to remove this filter'
+		});
+		return picked?.map((item) => item.label);
+	}
+
+	private updateFilterState(): void {
+		// Show active filters in the view header
+		const filters: string[] = [];
+		if (this.filterScope === 'all') {
+			filters.push('all needs');
+		}
+		if (this.filterTypes.length > 0) {
+			filters.push(`type: ${this.filterTypes.join(', ')}`);
+		}
+		if (this.filterTags.length > 0) {
+			filters.push(`tags: ${this.filterTags.join(', ')}`);
+		}
+		if (this.treeView) {
+			this.treeView.description = filters.length > 0 ? filters.join(' · ') : undefined;
+		}
+		if (this.filterContextKey) {
+			vscode.commands.executeCommand('setContext', this.filterContextKey, filters.length > 0);
+		}
+	}
+
+	private getFilterBaseNeeds(): Needs {
+		// Needs before type and tags filters: needs of current document or all needs
+		if (!this.currEditorView || this.filterScope === 'document') {
+			return this.needsInfo.needs ?? {};
+		}
+		if (!this.needsInfo.all_needs) {
+			// No needs.json related to current document: use the first configured one
+			const firstNeedsInfo = Object.values(this.needsInfos).find((info) => info.all_needs);
+			if (firstNeedsInfo) {
+				this.needsInfo = { ...firstNeedsInfo };
+			}
+		}
+		return this.needsInfo.all_needs ?? {};
+	}
+
+	private getDisplayedNeeds(): Needs {
+		const displayedNeeds: Needs = {};
+		Object.values(this.getFilterBaseNeeds()).forEach((need) => {
+			if (this.filterTypes.length > 0 && !this.filterTypes.includes(need.type)) {
+				return;
+			}
+			if (this.filterTags.length > 0 && !this.filterTags.every((tag) => need.tags?.includes(tag))) {
+				return;
+			}
+			displayedNeeds[need.id] = need;
+		});
+		return displayedNeeds;
 	}
 
 	private onActiveEditorChanged(curr_document = vscode.window.activeTextEditor?.document): void {
@@ -332,18 +481,15 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 	}
 
 	getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
-		if (!this.needsInfo.needs) {
-			return Promise.resolve([]);
-		}
-
 		if (!element) {
 			// Root level
 			return Promise.resolve(this.getNeedTree());
 		}
 
 		// Need level: sections of fields, outgoing and incoming links
-		if (element instanceof NeedTree && element.id in this.needsInfo.needs) {
-			const need = this.needsInfo.needs[element.id];
+		const allNeeds = this.needsInfo.all_needs ?? this.needsInfo.needs ?? {};
+		if (element instanceof NeedTree && element.id in allNeeds) {
+			const need = allNeeds[element.id];
 			return Promise.resolve([
 				new NeedSectionItem('Fields', this.getFieldItems(need)),
 				new NeedSectionItem('Links Outgoing', this.getLinkItems(need, 'outgoing')),
@@ -658,10 +804,11 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 
 	private getNeedTree(): NeedTree[] {
 		const needsItems: NeedTree[] = [];
-		if (this.needsInfo.needs) {
-			Object.values(this.needsInfo.needs).forEach((need) => {
+		const displayedNeeds = this.getDisplayedNeeds();
+		if (displayedNeeds) {
+			Object.values(displayedNeeds).forEach((need) => {
 				// Check if Need ID matches Need Objects key entry
-				if (!(need['id'] in this.needsInfo.needs)) {
+				if (!(need['id'] in displayedNeeds)) {
 					tslogger.warn(`SNV Explorer -> Need object entry of ${need.id} not exits in given needs.json`);
 				} else {
 					// Calculate needed hoverOptionsValues for hover over item

@@ -54,8 +54,15 @@ export function activate(context: ExtensionContext) {
 
 	// Treeview of Sphinx-Needs objects in current active editor
 	const needsCurrentProvider = new NeedsExplorerProvider(true);
-	window.createTreeView('sphinxNeedsCurrent', {
+	const needsCurrentView = window.createTreeView('sphinxNeedsCurrent', {
 		treeDataProvider: needsCurrentProvider
+	});
+	needsCurrentProvider.setTreeView(needsCurrentView, 'sphinxNeedsCurrent.filtered');
+	commands.registerCommand('sphinxNeedsCurrent.filter', () => {
+		needsCurrentProvider.showFilterMenu();
+	});
+	commands.registerCommand('sphinxNeedsCurrent.filterActive', () => {
+		needsCurrentProvider.showFilterMenu();
 	});
 	commands.registerCommand('sphinxNeedsCurrent.refresh', () => {
 		needsCurrentProvider.refresh();
