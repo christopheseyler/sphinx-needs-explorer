@@ -62,6 +62,8 @@ interface NeedsPerDoc {
 
 interface NeedsInfo {
 	needs: Needs;
+	// All needs of the needsJson, while needs may be filtered for current document
+	all_needs?: Needs;
 	allFiles: string[];
 	src_dir: string;
 	needs_json: string;
@@ -329,7 +331,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		});
 	}
 
-	getChildren(element?: NeedTree | NeedOptionItem): Thenable<vscode.TreeItem[]> {
+	getChildren(element?: vscode.TreeItem): Thenable<vscode.TreeItem[]> {
 		if (!this.needsInfo.needs) {
 			return Promise.resolve([]);
 		}
@@ -339,29 +341,81 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 			return Promise.resolve(this.getNeedTree());
 		}
 
-		// Get and show need options
-		if (element.id && element.id in this.needsInfo.needs && this.snvConfigs.explorerOptions) {
-			const optionItems: NeedOptionItem[] = [];
-			this.snvConfigs.explorerOptions.forEach((option) => {
-				if (element.id) {
-					// check if option exists in needs.json
-					if (option in this.needsInfo.needs[element.id]) {
-						for (const [need_option, op_value] of Object.entries(this.needsInfo.needs[element.id])) {
-							if (option === need_option) {
-								optionItems.push(
-									new NeedOptionItem(option + ': ' + op_value, vscode.TreeItemCollapsibleState.None)
-								);
-							}
-						}
-					} else {
-						optionItems.push(new NeedOptionItem(option + ': None', vscode.TreeItemCollapsibleState.None));
-						tslogger.warn(`SNV Explorer -> Need option ${option} not exists for ${element.id}.`);
-					}
-				}
-			});
-			return Promise.resolve(optionItems);
+		// Need level: sections of fields, outgoing and incoming links
+		if (element instanceof NeedTree && element.id in this.needsInfo.needs) {
+			const need = this.needsInfo.needs[element.id];
+			return Promise.resolve([
+				new NeedSectionItem('Fields', this.getFieldItems(need)),
+				new NeedSectionItem('Links Outgoing', this.getLinkItems(need, 'outgoing')),
+				new NeedSectionItem('Links Incoming', this.getLinkItems(need, 'incoming'))
+			]);
+		}
+
+		if (element instanceof NeedSectionItem) {
+			return Promise.resolve(element.children);
 		}
 		return Promise.resolve([]);
+	}
+
+	private getFieldItems(need: Need): NeedOptionItem[] {
+		// Get and show need options, except links which have their own sections
+		const linkTypes = this.getLinkTypes();
+		const optionItems: NeedOptionItem[] = [];
+		this.snvConfigs.explorerOptions?.forEach((option) => {
+			if (linkTypes.includes(option) || linkTypes.includes(option.replace(/_back$/, ''))) {
+				return;
+			}
+			if (option in need) {
+				const op_value = (need as unknown as { [option: string]: unknown })[option];
+				const value = Array.isArray(op_value) ? op_value.join(', ') : `${op_value ?? ''}`;
+				optionItems.push(new NeedOptionItem(option, value));
+			} else {
+				optionItems.push(new NeedOptionItem(option, 'None'));
+				tslogger.warn(`SNV Explorer -> Need option ${option} not exists for ${need.id}.`);
+			}
+		});
+		return optionItems;
+	}
+
+	private getLinkTypes(): string[] {
+		// Link types are 'links' and each need option with a back links option '<link_type>_back'
+		const linkTypes = new Set<string>(['links']);
+		Object.values(this.needsInfo.all_needs ?? this.needsInfo.needs).forEach((need) => {
+			Object.keys(need).forEach((option) => {
+				if (option.endsWith('_back')) {
+					linkTypes.add(option.slice(0, -'_back'.length));
+				}
+			});
+		});
+		return Array.from(linkTypes);
+	}
+
+	private getLinkItems(need: Need, direction: 'outgoing' | 'incoming'): NeedLinkItem[] {
+		const allNeeds = this.needsInfo.all_needs ?? this.needsInfo.needs;
+		const needOptions = need as unknown as { [option: string]: unknown };
+		const linkItems: NeedLinkItem[] = [];
+		this.getLinkTypes().forEach((linkType) => {
+			let linkedIds: string[] = [];
+			if (direction === 'outgoing') {
+				linkedIds = Array.isArray(needOptions[linkType]) ? (needOptions[linkType] as string[]) : [];
+			} else if (Array.isArray(needOptions[linkType + '_back'])) {
+				linkedIds = needOptions[linkType + '_back'] as string[];
+			} else {
+				// No back links in needs.json, e.g. older Sphinx-Needs versions: calculate them
+				linkedIds = Object.values(allNeeds)
+					.filter((other) => {
+						const otherLinks = (other as unknown as { [option: string]: unknown })[linkType];
+						return Array.isArray(otherLinks) && otherLinks.includes(need.id);
+					})
+					.map((other) => other.id);
+			}
+			linkedIds.forEach((linkedId) => {
+				const linkedNeed = allNeeds[linkedId];
+				const linkedLoc = linkedNeed ? this.getNeedLocation(linkedNeed) : undefined;
+				linkItems.push(new NeedLinkItem(linkType, linkedId, linkedNeed?.title, direction, linkedLoc));
+			});
+		});
+		return linkItems;
 	}
 
 	getTreeItem(element: NeedTree): vscode.TreeItem | Thenable<vscode.TreeItem> {
@@ -540,6 +594,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 
 			const needs_info: NeedsInfo = {
 				needs: needs_objects,
+				all_needs: needs_objects,
 				allFiles: all_files_path,
 				src_dir: curr_src_dir,
 				needs_json: needsJsonFilePath,
@@ -558,7 +613,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 
 	private getNeedFilePath(need: Need): vscode.Uri {
 		// Get file path of current need
-		const curr_need: Need = this.needsInfo.needs[need.id];
+		const curr_need: Need = need;
 
 		// Check if docname and doctype exist in need object
 		if (!('docname' in curr_need)) {
@@ -586,6 +641,21 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		return needFileUri;
 	}
 
+	private getNeedLocation(need: Need): vscode.Location {
+		// Get need ID Definition Location
+		const needFileUri = this.getNeedFilePath(need);
+		let needIDPos;
+		try {
+			needIDPos = findDefinition(need, needFileUri);
+		} catch (err) {
+			tslogger.error(`SNV Explorer -> No Need ID defintion found for ${need['id']}.`);
+		}
+		if (!needIDPos) {
+			needIDPos = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
+		}
+		return new vscode.Location(needFileUri, needIDPos);
+	}
+
 	private getNeedTree(): NeedTree[] {
 		const needsItems: NeedTree[] = [];
 		if (this.needsInfo.needs) {
@@ -608,17 +678,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 						}
 					});
 					// Get need ID Definition Location
-					const needFileUri = this.getNeedFilePath(need);
-					let needIDPos;
-					try {
-						needIDPos = findDefinition(need, needFileUri);
-					} catch (err) {
-						tslogger.error(`SNV Explorer -> No Need ID defintion found for ${need['id']}.`);
-					}
-					if (!needIDPos) {
-						needIDPos = new vscode.Range(new vscode.Position(0, 0), new vscode.Position(0, 0));
-					}
-					const needIDLoc = new vscode.Location(needFileUri, needIDPos);
+					const needIDLoc = this.getNeedLocation(need);
 
 					const needItem = new NeedTree(
 						need['id'],
@@ -673,10 +733,48 @@ class NeedTree extends vscode.TreeItem {
 	contextValue = 'needID';
 }
 
+class NeedSectionItem extends vscode.TreeItem {
+	constructor(label: string, public readonly children: vscode.TreeItem[]) {
+		super(
+			label,
+			children.length > 0 ? vscode.TreeItemCollapsibleState.Expanded : vscode.TreeItemCollapsibleState.None
+		);
+		this.description = children.length > 0 ? '' : 'none';
+	}
+}
+
 class NeedOptionItem extends vscode.TreeItem {
-	constructor(private option: string, collapsibleState: vscode.TreeItemCollapsibleState) {
-		super(option, collapsibleState);
-		this.tooltip = new vscode.MarkdownString(`${this.option}`, true);
+	constructor(option: string, value: string) {
+		super(option, vscode.TreeItemCollapsibleState.None);
+		this.description = value;
+		this.tooltip = new vscode.MarkdownString(`**${option}**: ${value}`, true);
+		this.iconPath = new vscode.ThemeIcon('circle-small-filled');
+	}
+}
+
+class NeedLinkItem extends vscode.TreeItem {
+	constructor(
+		linkType: string,
+		public readonly linkedId: string,
+		linkedTitle: string | undefined,
+		direction: 'outgoing' | 'incoming',
+		public readonly idLoc: vscode.Location | undefined
+	) {
+		super(linkType, vscode.TreeItemCollapsibleState.None);
+		this.description = linkedId;
+		this.tooltip = new vscode.MarkdownString(
+			linkedTitle ? `**${linkedId}**: ${linkedTitle}` : `**${linkedId}**: not found in needs.json`,
+			true
+		);
+		this.iconPath = new vscode.ThemeIcon(direction === 'outgoing' ? 'arrow-circle-right' : 'arrow-circle-left');
+		if (this.idLoc) {
+			// Jump to linked need on click
+			this.command = {
+				command: 'sphinxNeedsExplorer.gotoDef',
+				title: 'Goto Definition',
+				arguments: [this]
+			};
+		}
 	}
 }
 

@@ -6,7 +6,7 @@
     "name": "team useblocks"
   },
   "publisher": "useblocks",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "license": "MIT",
   "icon": "utils/sn-favicon.png",
   "repository": {
@@ -210,7 +210,7 @@
           "items": {
             "type": "string"
           },
-          "default": ["status", "links", "tags"],
+          "default": ["status", "type", "tags"],
           "description": "Sphinx-Needs need options to be shown under tree view of Sphinx-Needs Explorer."
         },
         "sphinx-needs.explorerItemHoverOptions": {
