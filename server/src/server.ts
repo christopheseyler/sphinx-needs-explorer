@@ -848,6 +848,15 @@ function get_curr_needs_info(params: TextDocumentPositionParams): NeedsTypesDocs
 				return needs_infos[need_json];
 			}
 		}
+		// Document not known as docname in needs.json, e.g. an included file:
+		// use the needsJson which contains the needs defined in it
+		const doc_text = documents.get(params.textDocument.uri)?.getText() ?? '';
+		const defined_ids = Array.from(doc_text.matchAll(/^\s*:id:\s+(\S+)\s*$/gm), (match) => match[1]);
+		for (const need_info of Object.values(needs_infos)) {
+			if (need_info && defined_ids.some((id) => id in need_info.needs)) {
+				return need_info;
+			}
+		}
 	}
 }
 

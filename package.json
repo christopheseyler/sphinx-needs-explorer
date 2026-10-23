@@ -6,7 +6,7 @@
     "name": "team useblocks"
   },
   "publisher": "useblocks",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "license": "MIT",
   "icon": "utils/sn-favicon.png",
   "repository": {
@@ -73,6 +73,16 @@
         "icon": "$(location)"
       },
       {
+        "command": "sphinxNeedsExplorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "sphinxNeedsCurrent.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)"
+      },
+      {
         "command": "sphinxNeedsExplorer.openNeedsJson",
         "title": "Open NeedsJson",
         "icon": "$(file)"
@@ -112,6 +122,16 @@
         {
           "command": "sphinxNeedsExplorer.openSphinxNeedsOfficialDocs",
           "when": "view == sphinxNeedsExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "sphinxNeedsExplorer.refresh",
+          "when": "view == sphinxNeedsExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "sphinxNeedsCurrent.refresh",
+          "when": "view == sphinxNeedsCurrent",
           "group": "navigation"
         }
       ],

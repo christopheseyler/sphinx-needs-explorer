@@ -38,6 +38,9 @@ export function activate(context: ExtensionContext) {
 	commands.registerCommand('sphinxNeedsExplorer.copyID', (item) => {
 		needsExplorerProvider.copyNeedID(item);
 	});
+	commands.registerCommand('sphinxNeedsExplorer.refresh', () => {
+		needsExplorerProvider.refresh();
+	});
 
 	// Treeview for Sphinx-Needs help
 	const needsHelpsProvider = new NeedsHelpsProvider();
@@ -53,6 +56,9 @@ export function activate(context: ExtensionContext) {
 	const needsCurrentProvider = new NeedsExplorerProvider(true);
 	window.createTreeView('sphinxNeedsCurrent', {
 		treeDataProvider: needsCurrentProvider
+	});
+	commands.registerCommand('sphinxNeedsCurrent.refresh', () => {
+		needsCurrentProvider.refresh();
 	});
 
 	// The server is implemented in node

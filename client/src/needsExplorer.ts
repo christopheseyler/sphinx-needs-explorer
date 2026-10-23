@@ -111,6 +111,13 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		// Watch active editor change to update tree view
 		vscode.window.onDidChangeActiveTextEditor(() => this.onActiveEditorChanged());
 
+		// Changing the language mode of a document reopens it, e.g. *.inc file set to reStructuredText
+		vscode.workspace.onDidOpenTextDocument((doc) => {
+			if (vscode.window.activeTextEditor?.document.uri.toString() === doc.uri.toString()) {
+				this.onActiveEditorChanged(doc);
+			}
+		});
+
 		// Create file watcher for needs.json
 		this.watcher();
 
@@ -177,9 +184,19 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		});
 	}
 
-	private onActiveEditorChanged(): void {
-		if (vscode.window.activeTextEditor) {
-			const curr_doc = normalizePath(vscode.window.activeTextEditor.document.uri.fsPath);
+	refresh(): void {
+		// Reload configurations and all needsJsons, then update tree view
+		this.snvConfigs = this.getSNVConfigurations();
+		tslogger = new TimeStampedLogger(this.snvConfigs.loggingLevel);
+		this.check_wk_configs();
+		this.needsInfos = this.loadAllNeedsJsonsToInfos();
+		this.onActiveEditorChanged();
+		this._onDidChangeTreeData.fire(undefined);
+	}
+
+	private onActiveEditorChanged(curr_document = vscode.window.activeTextEditor?.document): void {
+		if (curr_document) {
+			const curr_doc = normalizePath(curr_document.uri.fsPath);
 			// Check if current active editor relevant
 			let found_need_info = false;
 			let found_need_info_key = '';
@@ -191,10 +208,15 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 			}
 
 			if (found_need_info) {
-				this.needsInfo = this.needsInfos[found_need_info_key];
+				// Copy to keep all needs of needsInfos untouched
+				this.needsInfo = { ...this.needsInfos[found_need_info_key] };
 				if (this.currEditorView) {
 					this.needsInfo.needs = this.needsInfo.needs_per_doc[curr_doc];
 				}
+			} else if (curr_document.languageId === 'restructuredtext') {
+				// Document not known as docname in needs.json, e.g. an included file:
+				// use the needs defined in it
+				this.needsInfo = this.getNeedsInfoOfDefinedNeeds(curr_document.getText());
 			} else {
 				this.needsInfo = {
 					needs: {},
@@ -206,6 +228,31 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 			}
 			this._onDidChangeTreeData.fire(undefined);
 		}
+	}
+
+	private getNeedsInfoOfDefinedNeeds(docText: string): NeedsInfo {
+		// Get IDs of needs defined in given document text, e.g. '   :id: REQ_1'
+		const defined_ids = Array.from(docText.matchAll(/^\s*:id:\s+(\S+)\s*$/gm), (match) => match[1]);
+		for (const need_info of Object.values(this.needsInfos)) {
+			const found_ids = defined_ids.filter((id) => id in need_info.needs);
+			if (found_ids.length > 0) {
+				if (!this.currEditorView) {
+					return { ...need_info };
+				}
+				const found_needs: Needs = {};
+				found_ids.forEach((id) => {
+					found_needs[id] = need_info.needs[id];
+				});
+				return { ...need_info, needs: found_needs };
+			}
+		}
+		return {
+			needs: {},
+			allFiles: [],
+			src_dir: '',
+			needs_json: '',
+			needs_per_doc: {}
+		};
 	}
 
 	private listenToChangeConfiguration(): void {
