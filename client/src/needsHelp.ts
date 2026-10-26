@@ -28,7 +28,7 @@ const linkIcons: LinkIcon = {
 };
 
 const sphinxNeedsGithub = 'https://github.com/useblocks/sphinx-needs';
-const sphinxNeedsVsCodeGithub = 'https://github.com/useblocks/sphinx-needs-vscode';
+const sphinxNeedsVsCodeGithub = 'https://github.com/christopheseyler/sphinx-needs-explorer';
 
 const needLinks: HelpLinks = {
 	SNDocs: {
@@ -52,22 +52,22 @@ const needLinks: HelpLinks = {
 		icon: linkIcons.issues
 	},
 	SNVDocs: {
-		id: 'Read Sphinx-Needs-VsCode Official Docs',
-		link: 'https://sphinx-needs-vscode.useblocks.com/',
+		id: 'Read Sphinx-Needs Explorer Docs',
+		link: `${sphinxNeedsVsCodeGithub}#readme`,
 		icon: linkIcons.docs
 	},
 	SNVCode: {
-		id: 'Sphinx-Needs-VsCode Source Code on Github',
+		id: 'Sphinx-Needs Explorer Source Code on Github',
 		link: sphinxNeedsVsCodeGithub,
 		icon: linkIcons.code
 	},
 	SNVNewIssue: {
-		id: 'Open new issue for Sphinx-Needs-VsCode',
+		id: 'Open new issue for Sphinx-Needs Explorer',
 		link: `${sphinxNeedsVsCodeGithub}/issues/new`,
 		icon: linkIcons.newIssue
 	},
 	SNVIssues: {
-		id: 'Review issues of Sphinx-Needs-VsCode',
+		id: 'Review issues of Sphinx-Needs Explorer',
 		link: `${sphinxNeedsVsCodeGithub}/issues`,
 		icon: linkIcons.issues
 	}

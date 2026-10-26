@@ -1,23 +1,36 @@
 {
-  "name": "sphinx-needs-vscode",
-  "displayName": "Sphinx-Needs",
-  "description": "Sphinx-Needs language support in VSCode",
+  "name": "sphinx-needs-explorer",
+  "displayName": "Sphinx-Needs Explorer",
+  "description": "Navigate, hover and trace Sphinx-Needs requirements in VS Code. Community fork of the deprecated useblocks Sphinx-Needs extension, with bug fixes and new features.",
   "author": {
-    "name": "team useblocks"
+    "name": "Christophe Seyler"
   },
-  "publisher": "useblocks",
-  "version": "0.3.7",
+  "publisher": "christopheseyler",
+  "version": "0.4.0",
   "license": "MIT",
-  "icon": "utils/sn-favicon.png",
+  "icon": "utils/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/useblocks/sphinx-needs-vscode"
+    "url": "https://github.com/christopheseyler/sphinx-needs-explorer"
   },
-  "homepage": "https://sphinx-needs-vscode.useblocks.com/",
+  "bugs": {
+    "url": "https://github.com/christopheseyler/sphinx-needs-explorer/issues"
+  },
+  "homepage": "https://github.com/christopheseyler/sphinx-needs-explorer#readme",
+  "keywords": [
+    "sphinx",
+    "sphinx-needs",
+    "requirements",
+    "traceability",
+    "restructuredtext"
+  ],
   "engines": {
     "vscode": "^1.67.0"
   },
-  "categories": [],
+  "categories": [
+    "Programming Languages",
+    "Other"
+  ],
   "activationEvents": [
     "workspaceContains:conf.py",
     "workspaceContains:*/conf.py",
@@ -31,8 +44,8 @@
       "activitybar": [
         {
           "id": "sphinx-needs",
-          "title": "Sphinx-Needs",
-          "icon": "utils/sphinx-needs-logo-favicon.png"
+          "title": "Sphinx-Needs Explorer",
+          "icon": "utils/activitybar.svg"
         }
       ]
     },
@@ -170,7 +183,7 @@
     },
     "configuration": {
       "type": "object",
-      "title": "Sphinx-Needs",
+      "title": "Sphinx-Needs Explorer",
       "properties": {
         "sphinx-needs.trace.server": {
           "scope": "window",
