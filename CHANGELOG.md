@@ -3,6 +3,12 @@
 All versions below are releases of the **Sphinx-Needs Explorer** community fork. For the history of the original
 extension, see [useblocks/sphinx-needs-vscode](https://github.com/useblocks/sphinx-needs-vscode).
 
+## 0.5.0
+
+- **Links graph**: traceability graph of the upstream and downstream links of a need, with adjustable max distance
+  and zoom. Available from the graph icon of a need in the Explorer and Current views, and from the editor context
+  menu for the need ID at the cursor.
+
 ## 0.4.0
 
 - Published as **Sphinx-Needs Explorer** (`christopheseyler.sphinx-needs-explorer`), community fork of the

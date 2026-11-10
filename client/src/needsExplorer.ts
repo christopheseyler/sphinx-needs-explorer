@@ -26,11 +26,54 @@ function resolveConfPath(confPath: string | undefined, workspaceFolderPath: stri
 	return normalizePath(confPath.replace('${workspaceFolder}', workspaceFolderPath));
 }
 
-interface Needs {
+export interface Needs {
 	[need_id: string]: Need;
 }
 
-interface Need {
+// Needs of a needs.json with their link types and definition locations, e.g. for a links graph
+export interface NeedsGraphSource {
+	allNeeds: Needs;
+	linkTypes: string[];
+	locate: (needId: string) => vscode.Location | undefined;
+}
+
+// Link types are 'links' and each need option with a back links option '<link_type>_back'
+export function getLinkTypesOfNeeds(allNeeds: Needs): string[] {
+	const linkTypes = new Set<string>(['links']);
+	Object.values(allNeeds).forEach((need) => {
+		Object.keys(need).forEach((option) => {
+			if (option.endsWith('_back')) {
+				linkTypes.add(option.slice(0, -'_back'.length));
+			}
+		});
+	});
+	return Array.from(linkTypes);
+}
+
+// Get IDs of needs linked by given need (outgoing) or linking to given need (incoming) for given link type
+export function getLinkedIds(
+	need: Need,
+	linkType: string,
+	direction: 'outgoing' | 'incoming',
+	allNeeds: Needs
+): string[] {
+	const needOptions = need as unknown as { [option: string]: unknown };
+	if (direction === 'outgoing') {
+		return Array.isArray(needOptions[linkType]) ? (needOptions[linkType] as string[]) : [];
+	}
+	if (Array.isArray(needOptions[linkType + '_back'])) {
+		return needOptions[linkType + '_back'] as string[];
+	}
+	// No back links in needs.json, e.g. older Sphinx-Needs versions: calculate them
+	return Object.values(allNeeds)
+		.filter((other) => {
+			const otherLinks = (other as unknown as { [option: string]: unknown })[linkType];
+			return Array.isArray(otherLinks) && otherLinks.includes(need.id);
+		})
+		.map((other) => other.id);
+}
+
+export interface Need {
 	id: string;
 	description: string;
 	content?: string;
@@ -524,38 +567,34 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 	}
 
 	private getLinkTypes(): string[] {
-		// Link types are 'links' and each need option with a back links option '<link_type>_back'
-		const linkTypes = new Set<string>(['links']);
-		Object.values(this.needsInfo.all_needs ?? this.needsInfo.needs).forEach((need) => {
-			Object.keys(need).forEach((option) => {
-				if (option.endsWith('_back')) {
-					linkTypes.add(option.slice(0, -'_back'.length));
-				}
-			});
-		});
-		return Array.from(linkTypes);
+		return getLinkTypesOfNeeds(this.needsInfo.all_needs ?? this.needsInfo.needs);
+	}
+
+	getGraphSource(): NeedsGraphSource | undefined {
+		// Snapshot of the needs of current needs.json, to keep a links graph independent of the active editor
+		let needsInfo = this.needsInfo;
+		if (!needsInfo.all_needs) {
+			// No needs.json related to current document: use the first configured one
+			const firstNeedsInfo = Object.values(this.needsInfos).find((info) => info.all_needs);
+			if (!firstNeedsInfo) {
+				return undefined;
+			}
+			needsInfo = firstNeedsInfo;
+		}
+		const allNeeds = needsInfo.all_needs ?? {};
+		const srcDir = needsInfo.src_dir;
+		return {
+			allNeeds: allNeeds,
+			linkTypes: getLinkTypesOfNeeds(allNeeds),
+			locate: (needId: string) => (needId in allNeeds ? this.getNeedLocation(allNeeds[needId], srcDir) : undefined)
+		};
 	}
 
 	private getLinkItems(need: Need, direction: 'outgoing' | 'incoming'): NeedLinkItem[] {
 		const allNeeds = this.needsInfo.all_needs ?? this.needsInfo.needs;
-		const needOptions = need as unknown as { [option: string]: unknown };
 		const linkItems: NeedLinkItem[] = [];
 		this.getLinkTypes().forEach((linkType) => {
-			let linkedIds: string[] = [];
-			if (direction === 'outgoing') {
-				linkedIds = Array.isArray(needOptions[linkType]) ? (needOptions[linkType] as string[]) : [];
-			} else if (Array.isArray(needOptions[linkType + '_back'])) {
-				linkedIds = needOptions[linkType + '_back'] as string[];
-			} else {
-				// No back links in needs.json, e.g. older Sphinx-Needs versions: calculate them
-				linkedIds = Object.values(allNeeds)
-					.filter((other) => {
-						const otherLinks = (other as unknown as { [option: string]: unknown })[linkType];
-						return Array.isArray(otherLinks) && otherLinks.includes(need.id);
-					})
-					.map((other) => other.id);
-			}
-			linkedIds.forEach((linkedId) => {
+			getLinkedIds(need, linkType, direction, allNeeds).forEach((linkedId) => {
 				const linkedNeed = allNeeds[linkedId];
 				const linkedLoc = linkedNeed ? this.getNeedLocation(linkedNeed) : undefined;
 				linkItems.push(new NeedLinkItem(linkType, linkedId, linkedNeed?.title, direction, linkedLoc));
@@ -757,7 +796,7 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 		};
 	}
 
-	private getNeedFilePath(need: Need): vscode.Uri {
+	private getNeedFilePath(need: Need, src_dir = this.needsInfo.src_dir): vscode.Uri {
 		// Get file path of current need
 		const curr_need: Need = need;
 
@@ -773,23 +812,23 @@ export class NeedsExplorerProvider implements vscode.TreeDataProvider<vscode.Tre
 
 		// Calculate doc path uri for current need
 		let curr_need_file_path = '';
-		if (this.needsInfo.src_dir) {
-			curr_need_file_path = path.resolve(this.needsInfo.src_dir, curr_need.docname + curr_need.doctype);
+		if (src_dir) {
+			curr_need_file_path = path.resolve(src_dir, curr_need.docname + curr_need.doctype);
 			if (!this.pathExists(curr_need_file_path)) {
 				tslogger.warn(`SNV Explorer -> doc path for Need ${need.id} not exists: ${curr_need_file_path}`);
 			} else {
 				// Need may be defined in a file included by its docname file
 				curr_need_file_path =
-					findNeedSourceFile(curr_need_file_path, curr_need.id, this.needsInfo.src_dir) ?? curr_need_file_path;
+					findNeedSourceFile(curr_need_file_path, curr_need.id, src_dir) ?? curr_need_file_path;
 			}
 		}
 		const needFileUri: vscode.Uri = vscode.Uri.file(curr_need_file_path);
 		return needFileUri;
 	}
 
-	private getNeedLocation(need: Need): vscode.Location {
+	private getNeedLocation(need: Need, src_dir = this.needsInfo.src_dir): vscode.Location {
 		// Get need ID Definition Location
-		const needFileUri = this.getNeedFilePath(need);
+		const needFileUri = this.getNeedFilePath(need, src_dir);
 		let needIDPos;
 		try {
 			needIDPos = findDefinition(need, needFileUri);

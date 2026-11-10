@@ -3,6 +3,7 @@
 import * as path from 'path';
 import { NeedsExplorerProvider } from './needsExplorer';
 import { NeedsHelpsProvider } from './needsHelp';
+import { showNeedsGraph } from './needsGraph';
 import { commands, env, window, workspace, ExtensionContext, languages, Uri } from 'vscode';
 
 import {
@@ -66,6 +67,28 @@ export function activate(context: ExtensionContext) {
 	});
 	commands.registerCommand('sphinxNeedsCurrent.refresh', () => {
 		needsCurrentProvider.refresh();
+	});
+
+	// Graph of incoming and outgoing links of a need
+	const showLinksGraph = (provider: NeedsExplorerProvider, needId: string | undefined) => {
+		const graphSource = provider.getGraphSource();
+		if (needId && graphSource && needId in graphSource.allNeeds) {
+			showNeedsGraph(graphSource, needId);
+		} else {
+			window.showInformationMessage(`SNV: No need found in needs.json for ${needId ?? 'current selection'}.`);
+		}
+	};
+	commands.registerCommand('sphinxNeedsExplorer.showLinksGraph', (item) => {
+		showLinksGraph(needsExplorerProvider, item?.id);
+	});
+	commands.registerCommand('sphinxNeedsCurrent.showLinksGraph', (item) => {
+		showLinksGraph(needsCurrentProvider, item?.id);
+	});
+	commands.registerCommand('sphinxNeeds.showLinksGraphAtCursor', () => {
+		// Need ID under the cursor of the active editor
+		const editor = window.activeTextEditor;
+		const wordRange = editor?.document.getWordRangeAtPosition(editor.selection.active, /[\w-]+/);
+		showLinksGraph(needsExplorerProvider, wordRange ? editor?.document.getText(wordRange) : undefined);
 	});
 
 	// The server is implemented in node

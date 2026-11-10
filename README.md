@@ -37,6 +37,10 @@ of your needs and their links.
   - Included files (e.g. `*.inc` set to reStructuredText) show the needs defined in them.
 - Each need is split into **Fields**, **Links Outgoing** and **Links Incoming** sections, including extra links
   (`satisfies`, `verifies`, ...); clicking a link jumps to the linked need.
+- **Links graph**: the graph icon on a need (or *Sphinx-Needs: Show Links Graph of Need at Cursor* in the editor
+  context menu) opens a traceability graph centered on that need. Needs it links to (e.g. higher level
+  specifications) are shown above, needs linking to it (e.g. implementations and tests) below, up to an adjustable
+  `maxDistance`. Click a need to open it, or center the graph on it.
 
 See the [CHANGELOG](CHANGELOG.md) for details.
 

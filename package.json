@@ -6,7 +6,7 @@
     "name": "Christophe Seyler"
   },
   "publisher": "christopheseyler",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "license": "MIT",
   "icon": "utils/icon.png",
   "repository": {
@@ -96,6 +96,21 @@
         "icon": "$(refresh)"
       },
       {
+        "command": "sphinxNeedsExplorer.showLinksGraph",
+        "title": "Show Links Graph",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "sphinxNeedsCurrent.showLinksGraph",
+        "title": "Show Links Graph",
+        "icon": "$(type-hierarchy)"
+      },
+      {
+        "command": "sphinxNeeds.showLinksGraphAtCursor",
+        "title": "Sphinx-Needs: Show Links Graph of Need at Cursor",
+        "icon": "$(type-hierarchy)"
+      },
+      {
         "command": "sphinxNeedsCurrent.filter",
         "title": "Filter Needs",
         "icon": "$(filter)"
@@ -178,6 +193,33 @@
           "command": "sphinxNeedsExplorer.copyID",
           "when": "view =~ /^sphinxNeeds(Explorer|Current)$/ && viewItem == needID",
           "group": "inline"
+        },
+        {
+          "command": "sphinxNeedsExplorer.showLinksGraph",
+          "when": "view == sphinxNeedsExplorer && viewItem == needID",
+          "group": "inline"
+        },
+        {
+          "command": "sphinxNeedsCurrent.showLinksGraph",
+          "when": "view == sphinxNeedsCurrent && viewItem == needID",
+          "group": "inline"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "sphinxNeeds.showLinksGraphAtCursor",
+          "when": "editorLangId == restructuredtext",
+          "group": "navigation@9"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "sphinxNeedsExplorer.showLinksGraph",
+          "when": "false"
+        },
+        {
+          "command": "sphinxNeedsCurrent.showLinksGraph",
+          "when": "false"
         }
       ]
     },
